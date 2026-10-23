@@ -4,7 +4,7 @@ This is a personal template engine for code/config generation.
 
 The template engine MUST be transparent and provide little to no abstraction to the user.
 
-The is also a research project, to understand how to implement a code
+This also a research project, to understand how to implement a code
 generator that can be integrated into a build system AND stay fast.
 
 ## Usage
