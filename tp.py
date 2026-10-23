@@ -1,116 +1,155 @@
 #!/usr/bin/env python3
 import sys
 
+# PERF: Faster code generation
+#   - string buffer for raw mode, and flush when done or newline
 # TODO: String escape
 # TODO: Single line comment
 # TODO: Test for else
 # TODO: Match statement
 
 
-content = sys.stdin.read()
+content = sys.stdin.buffer.read()
 
 # State
 mode = 'template-expr'
 mode = 'template-stmt'
 mode = 'normal'
-output = ''
+output = bytearray(1024 * 1024 * 4)
+o = 0
 indent = 0
 
+def isalnum(i):
+    return (0x30 <= i and i <= 0x39) \
+        or (0x41 <= i and i <= 0x5A) \
+        or (0x61 <= i and i <= 0x7A)
+
+def isspace(i):
+    return 0x0A == i \
+        or 0x09 == i \
+        or 0x0D == i \
+        or 0x20 == i
+
+def bwrite(bs):
+    global o
+    for b in bs:
+        output[o] = b
+        o += 1
+
 def tabs():
-    return '\t' * indent
+    global o
+    for i in range(indent):
+        output[o + i] = ord('\t')
+    o += indent
 
 def raw(c):
-    if c.isalnum():
-        return f'{tabs()}print("{c}", end="")\n'
+    global o
+    if isalnum(c):
+        tabs()
+        bwrite(b'print("')
+        output[o] = c
+        o += 1
+        bwrite(b'", end="")\n')
     else:
-        return f'{tabs()}print(chr({ord(c):#02X}), end="")\n'
+        tabs()
+        bwrite(b'print(chr(')
+        bwrite(hex(c).encode('ascii'))
+        bwrite(b'), end="")\n')
 
 def stmt(c):
-    return c
+    global o
+    output[o] = c
+    o += 1
 
 def expr(c):
-    return f'\\x{ord(c):02X}'
+    bwrite(b'\\x')
+    bwrite(c.hex().encode('ascii'))
 
 i = 0
 while i < len(content):
     if mode == 'normal':
-        if content[i:].startswith('{%'):
+        if content[i:].startswith(b'{%'):
             mode = 'template-stmt'
             i += 2
-            while content[i].isspace():
+            while isspace(content[i]):
                 i += 1
 
-            if content[i:].startswith('end'):
+            if content[i:].startswith(b'end'):
                 i += 3
                 indent -= 1
                 continue
 
-            if content[i:].startswith('else:'):
+            if content[i:].startswith(b'else:'):
                 i += 5
                 indent -= 1
-                output += tabs()
-                output += 'else:\n'
+                tabs()
+                bwrite(b'else:\n')
                 indent += 1
-                output += tabs()
+                tabs()
                 continue
-            if content[i:].startswith('elif '):
+            if content[i:].startswith(b'elif '):
                 i += 5
                 indent -= 1
-                output += tabs()
-                output += 'elif '
+                tabs()
+                bwrite(b'elif ')
                 indent += 1
                 continue
 
-            output += tabs()
+            tabs()
 
-            for kw in ['for', 'if', 'while', 'with']:
+            for kw in [b'for', b'if', b'while', b'with']:
                 if content[i:].startswith(kw):
-                    output += kw
+                    bwrite(kw)
                     i += len(kw)
                     indent += 1
                     break
 
             continue
-        if content[i:].startswith('{{{'):
+        if content[i:].startswith(b'{{{'):
             i += 3
-            output += raw('{') * 3
-        if content[i:].startswith('{{'):
+            raw(ord(b'{'))
+            raw(ord(b'{'))
+            raw(ord(b'{'))
+            continue
+        if content[i:].startswith(b'{{'):
             mode = 'template-expr'
             i += 2
-            while content[i].isspace():
+            while isspace(content[i]):
                 i += 1
-            output += f'{tabs()}print(eval("""'
+            tabs()
+            bwrite(b'print(eval("""')
             continue
 
-        output += raw(content[i])
+        raw(content[i])
         i += 1
         continue
 
     if mode == 'template-stmt':
-        if content[i:].startswith('%}'):
+        if content[i:].startswith(b'%}'):
             mode = 'normal'
             i += 2
             if '\n' == content[i]:
                 i += 1
-            output += f'\n'
-            output += tabs()
-            output += f'pass\n'
+            bwrite(b'\n')
+            tabs()
+            bwrite(b'pass\n')
             continue
-        output += stmt(content[i])
+        stmt(content[i])
         i += 1
         continue
 
     if mode == 'template-expr':
-        if content[i:].startswith('}}'):
+        if content[i:].startswith(b'}}'):
             mode = 'normal'
             i += 2
-            output += f'"""), end="")\n'
+            bwrite(b'"""), end="")\n')
             continue
 
-        output += expr(content[i])
+        expr(content[i])
         i += 1
         continue
     assert False
 
-exec(output)
-# print(output)
+# print(output[:o])
+# print(output[:o].decode('utf-8'))
+exec(output[:o].decode('utf-8'))
