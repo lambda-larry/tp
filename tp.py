@@ -71,6 +71,9 @@ while i < len(content):
                     break
 
             continue
+        if content[i:].startswith('{{{'):
+            i += 3
+            output += raw('{') * 3
         if content[i:].startswith('{{'):
             mode = 'template-expr'
             i += 2
