@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 import sys
 
-# PERF: Faster code generation
-#   - string buffer for raw mode, and flush when done or newline
 # TODO: String escape
 # TODO: Single line comment
 # TODO: Test for else
@@ -42,19 +40,20 @@ def tabs():
         output[o + i] = ord('\t')
     o += indent
 
+def raw_begin():
+    tabs()
+    bwrite(b'print("')
+
 def raw(c):
     global o
     if isalnum(c):
-        tabs()
-        bwrite(b'print("')
         output[o] = c
         o += 1
-        bwrite(b'", end="")\n')
     else:
-        tabs()
-        bwrite(b'print(chr(')
-        bwrite(hex(c).encode('ascii'))
-        bwrite(b'), end="")\n')
+        bwrite(f'\\x{c:02X}'.encode('ascii'))
+
+def raw_end():
+    bwrite(b'", end="")\n')
 
 def stmt(c):
     global o
@@ -65,10 +64,14 @@ def expr(c):
     bwrite(b'\\x')
     bwrite(c.hex().encode('ascii'))
 
+
+raw_begin()
+
 i = 0
 while i < len(content):
     if mode == 'normal':
         if content[i:].startswith(b'{%'):
+            raw_end()
             mode = 'template-stmt'
             i += 2
             while isspace(content[i]):
@@ -112,6 +115,7 @@ while i < len(content):
             raw(ord(b'{'))
             continue
         if content[i:].startswith(b'{{'):
+            raw_end()
             mode = 'template-expr'
             i += 2
             while isspace(content[i]):
@@ -133,6 +137,7 @@ while i < len(content):
             bwrite(b'\n')
             tabs()
             bwrite(b'pass\n')
+            raw_begin()
             continue
         stmt(content[i])
         i += 1
@@ -143,12 +148,15 @@ while i < len(content):
             mode = 'normal'
             i += 2
             bwrite(b'"""), end="")\n')
+            raw_begin()
             continue
 
         expr(content[i])
         i += 1
         continue
     assert False
+
+raw_end()
 
 # print(output[:o])
 # print(output[:o].decode('utf-8'))
